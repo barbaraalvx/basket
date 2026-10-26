@@ -58,8 +58,9 @@ Migrações em `supabase/migrations/`.
 Decisões:
 - Unidades de medida: `g`, `kg`, `ml`, `L`, `un`. Para R$/kg e R$/L, g vira kg e ml vira L no navegador.
 - Categorias: lista fixa no código (Hortifruti, Carnes, Laticínios, Padaria, Mercearia, Bebidas, Limpeza, Higiene, Congelados, Outros), guardada como texto.
-- Último preço pago: buscado pelo nome do item na compra mais recente da casa (sem catálogo de produtos).
-- Reaproveitar lista: copia os itens de uma lista antiga para uma nova.
+- Último preço pago: buscado pelo nome normalizado (sem acento, minúsculo) na compra mais recente da casa, em outras listas (sem catálogo de produtos). Preço e medida vêm da mesma compra (medida real).
+- Reaproveitar lista: "Usar como base para nova lista" copia os itens, com preço previsto e medida da última compra.
+- Opções: "Levar esta" marca a opção como escolhida e coloca o item no carrinho com o preço e a medida dela. A mais barata é calculada por R$/kg, R$/L ou R$/un, só entre opções comparáveis.
 - `items` e `options` têm duas ligações (opção pertence ao item; item aponta a opção escolhida). Ao buscar opções junto com itens, usar `options!options_item_id_fkey(...)`.
 
 ## Identidade visual

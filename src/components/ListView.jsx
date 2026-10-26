@@ -10,39 +10,85 @@ import {
   realSubtotal,
   wholesaleHint,
 } from '../lib/calc.js'
-import { CATEGORIES, categoryOf } from '../lib/catalog.js'
+import { CATEGORIES, categoryOf, normalizeName } from '../lib/catalog.js'
 import { supabase } from '../lib/supabase.js'
 import { useRealtime } from '../lib/useRealtime.js'
 import ItemSheet from './ItemSheet.jsx'
+import OptionsSheet from './OptionsSheet.jsx'
 import { dangerButton, secondaryButton, Sheet, Spinner, TextSheet } from './ui.jsx'
 
-export default function ListView({ listId, onBack }) {
+const HISTORY_FIELDS =
+  'name, category, measure_value, measure_unit, real_measure_value, real_measure_unit, qty_wanted, qty_bought, unit_price, wholesale_price, wholesale_min_qty, created_at, lists!inner(home_id, created_at)'
+
+// Size actually bought, falling back to what was planned
+const boughtMeasure = (item) =>
+  item.real_measure_value != null
+    ? { measure_value: item.real_measure_value, measure_unit: item.real_measure_unit }
+    : { measure_value: item.measure_value, measure_unit: item.measure_unit }
+
+export default function ListView({ homeId, listId, onBack, onOpen }) {
   const [list, setList] = useState(undefined) // null once deleted
   const [items, setItems] = useState([])
+  const [history, setHistory] = useState(new Map())
   const [tab, setTab] = useState('pending')
+  const [category, setCategory] = useState(null)
   const [editing, setEditing] = useState(null) // item, {} for a new one, or null
+  const [comparingId, setComparingId] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
 
   const load = useCallback(async () => {
     const [listRes, itemsRes] = await Promise.all([
       supabase.from('lists').select('id, name, status').eq('id', listId).maybeSingle(),
-      supabase.from('items').select('*').eq('list_id', listId).order('created_at'),
+      supabase
+        .from('items')
+        .select('*, options!options_item_id_fkey(*)')
+        .eq('list_id', listId)
+        .order('created_at')
+        .order('created_at', { referencedTable: 'options' }),
     ])
     if (!listRes.error) setList(listRes.data)
     if (!itemsRes.error) setItems(itemsRes.data)
   }, [listId])
 
+  // Last bought version of each product in the home's other lists
+  const loadHistory = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('items')
+      .select(HISTORY_FIELDS)
+      .eq('lists.home_id', homeId)
+      .eq('status', 'bought')
+      .neq('list_id', listId)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+    if (error) return
+    const map = new Map()
+    for (const item of data) {
+      const key = normalizeName(item.name)
+      if (map.has(key)) continue
+      map.set(key, {
+        name: item.name.trim(),
+        category: item.category,
+        ...boughtMeasure(item),
+        price: paidPrice(item),
+        date: new Date(item.lists.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      })
+    }
+    setHistory(map)
+  }, [homeId, listId])
+
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect -- initial fetch from Supabase
     load()
-  }, [load])
+    loadHistory()
+  }, [load, loadHistory])
 
   useRealtime(
     `list:${listId}`,
     [
       { table: 'items', filter: `list_id=eq.${listId}` },
       { table: 'lists', filter: `id=eq.${listId}` },
+      { table: 'options' },
     ],
     load,
   )
@@ -80,6 +126,40 @@ export default function ListView({ listId, onBack }) {
     onBack()
   }
 
+  // New list with the same items, priced at what was paid most recently
+  async function copyList() {
+    setMenuOpen(false)
+    const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    const { data: newList, error } = await supabase
+      .from('lists')
+      .insert({ home_id: homeId, name: `Mercado ${date}` })
+      .select('id')
+      .single()
+    if (error) return alert('Não foi possível criar a lista.')
+
+    // Bought items carry over what was actually bought; the rest use history
+    const rows = items.map((i) => {
+      const last = i.status === 'bought' ? { ...boughtMeasure(i), price: paidPrice(i) } : history.get(normalizeName(i.name))
+      const useLast = last?.price != null
+      return {
+        list_id: newList.id,
+        name: i.name,
+        category: i.category,
+        measure_value: useLast ? last.measure_value : i.measure_value,
+        measure_unit: useLast ? last.measure_unit : i.measure_unit,
+        qty_wanted: i.qty_wanted,
+        price_estimated: useLast ? last.price : i.price_estimated,
+        wholesale_price: i.wholesale_price,
+        wholesale_min_qty: i.wholesale_min_qty,
+      }
+    })
+    if (rows.length) {
+      const { error: itemsError } = await supabase.from('items').insert(rows)
+      if (itemsError) alert('A lista foi criada, mas nem todos os itens foram copiados.')
+    }
+    onOpen(newList.id)
+  }
+
   if (list === undefined) return <Spinner />
 
   if (list === null) {
@@ -96,9 +176,12 @@ export default function ListView({ listId, onBack }) {
   const pending = items.filter((i) => i.status !== 'bought')
   const bought = items.filter((i) => i.status === 'bought')
   const visible = tab === 'pending' ? pending : bought
-  const groups = CATEGORIES.map((c) => [c, visible.filter((i) => categoryOf(i) === c)]).filter(
-    ([, group]) => group.length > 0,
-  )
+  const present = CATEGORIES.filter((c) => visible.some((i) => categoryOf(i) === c))
+  const activeCategory = present.includes(category) ? category : null
+  const groups = present
+    .filter((c) => !activeCategory || c === activeCategory)
+    .map((c) => [c, visible.filter((i) => categoryOf(i) === c)])
+  const comparing = items.find((i) => i.id === comparingId)
 
   return (
     <>
@@ -135,6 +218,19 @@ export default function ListView({ listId, onBack }) {
           </TabButton>
         </div>
 
+        {present.length > 1 && (
+          <div className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
+            <CategoryChip active={!activeCategory} onClick={() => setCategory(null)}>
+              Todas
+            </CategoryChip>
+            {present.map((c) => (
+              <CategoryChip key={c} active={activeCategory === c} onClick={() => setCategory(c)}>
+                {c}
+              </CategoryChip>
+            ))}
+          </div>
+        )}
+
         {groups.length === 0 ? (
           <p className="mt-8 text-center text-sapphire-600">
             {tab === 'pending'
@@ -144,12 +240,18 @@ export default function ListView({ listId, onBack }) {
               : 'Nada no carrinho ainda.'}
           </p>
         ) : (
-          groups.map(([category, group]) => (
-            <section key={category} className="mt-6">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sapphire-500">{category}</h3>
+          groups.map(([group, groupItems]) => (
+            <section key={group} className="mt-6">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sapphire-500">{group}</h3>
               <ul className="space-y-2">
-                {group.map((item) => (
-                  <ItemRow key={item.id} item={item} onToggle={() => toggle(item)} onEdit={() => setEditing(item)} />
+                {groupItems.map((item) => (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    onToggle={() => toggle(item)}
+                    onEdit={() => setEditing(item)}
+                    onCompare={() => setComparingId(item.id)}
+                  />
                 ))}
               </ul>
             </section>
@@ -171,8 +273,20 @@ export default function ListView({ listId, onBack }) {
       <TotalsBar items={items} />
 
       {editing && (
-        <ItemSheet item={editing} listId={listId} onClose={() => setEditing(null)} onSaved={load} />
+        <ItemSheet
+          item={editing}
+          listId={listId}
+          history={history}
+          onClose={() => setEditing(null)}
+          onSaved={load}
+          onCompare={() => {
+            setComparingId(editing.id)
+            setEditing(null)
+          }}
+        />
       )}
+
+      {comparing && <OptionsSheet item={comparing} onClose={() => setComparingId(null)} onChanged={load} />}
 
       {menuOpen && (
         <Sheet title={list.name} onClose={() => setMenuOpen(false)}>
@@ -196,6 +310,9 @@ export default function ListView({ listId, onBack }) {
               className={secondaryButton}
             >
               {list.status === 'done' ? 'Reabrir lista' : 'Finalizar lista'}
+            </button>
+            <button onClick={copyList} className={secondaryButton}>
+              Usar como base para nova lista
             </button>
             <button onClick={deleteList} className={dangerButton}>
               Apagar lista
@@ -230,7 +347,22 @@ function TabButton({ active, onClick, children }) {
   )
 }
 
-function ItemRow({ item, onToggle, onEdit }) {
+function CategoryChip({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+        active
+          ? 'bg-sapphire-500 text-papaya-50 shadow-md shadow-sapphire-500/30'
+          : 'bg-papaya-50 text-sapphire-600 ring-1 ring-sapphire-100'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function ItemRow({ item, onToggle, onEdit, onCompare }) {
   const bought = item.status === 'bought'
   const qty = bought ? boughtQty(item) : item.qty_wanted
   const measure = bought
@@ -240,30 +372,43 @@ function ItemRow({ item, onToggle, onEdit }) {
   const subtotal = bought ? realSubtotal(item) : estimatedSubtotal(item)
   const hint = wholesaleHint(item)
   const details = [`${formatNumber(qty)}×`, measure, price != null && `${formatMoney(price)} cada`].filter(Boolean)
+  const options = item.options ?? []
+  const chosen = options.find((o) => o.id === item.chosen_option_id)
 
   return (
-    <li className="flex items-center gap-3 rounded-2xl bg-papaya-50 p-3 shadow-sm ring-1 ring-sapphire-100">
-      <button
-        onClick={onToggle}
-        aria-label={bought ? 'Tirar do carrinho' : 'Colocar no carrinho'}
-        className={`grid size-9 shrink-0 place-items-center rounded-full border-2 transition active:scale-90 ${
-          bought ? 'border-lagoon-500 bg-lagoon-500 text-papaya-50' : 'border-sapphire-200 bg-white'
-        }`}
-      >
-        {bought && (
-          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12l5 5L19 7" />
-          </svg>
-        )}
-      </button>
-      <button onClick={onEdit} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left">
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{item.name}</p>
-          <p className="text-sm text-sapphire-600">{details.join(' · ')}</p>
-          {hint && <p className="text-xs font-semibold text-jonquil-800">{hint}</p>}
-        </div>
-        <span className="shrink-0 font-semibold tabular-nums">{formatMoney(subtotal)}</span>
-      </button>
+    <li className="rounded-2xl bg-papaya-50 p-3 shadow-sm ring-1 ring-sapphire-100">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onToggle}
+          aria-label={bought ? 'Tirar do carrinho' : 'Colocar no carrinho'}
+          className={`grid size-9 shrink-0 place-items-center rounded-full border-2 transition active:scale-90 ${
+            bought ? 'border-lagoon-500 bg-lagoon-500 text-papaya-50' : 'border-sapphire-200 bg-white'
+          }`}
+        >
+          {bought && (
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12l5 5L19 7" />
+            </svg>
+          )}
+        </button>
+        <button onClick={onEdit} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left">
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{item.name}</p>
+            <p className="text-sm text-sapphire-600">{details.join(' · ')}</p>
+            {hint && <p className="text-xs font-semibold text-jonquil-800">{hint}</p>}
+          </div>
+          <span className="shrink-0 font-semibold tabular-nums">{formatMoney(subtotal)}</span>
+        </button>
+      </div>
+      {options.length > 0 && (
+        <button
+          onClick={onCompare}
+          className="mt-2 ml-12 rounded-full bg-lagoon-50 px-3 py-1 text-xs font-semibold text-lagoon-700 ring-1 ring-lagoon-200"
+        >
+          {options.length} {options.length === 1 ? 'opção' : 'opções'}
+          {chosen && ` · escolhida: ${chosen.brand || 'sem marca'}`}
+        </button>
+      )}
     </li>
   )
 }

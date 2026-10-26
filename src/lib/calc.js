@@ -46,6 +46,34 @@ export function realSubtotal(item) {
   return price == null ? null : boughtQty(item) * price
 }
 
+// g/kg compare per kg, ml/L per L, un per unit
+const BASE_UNITS = { g: ['kg', 0.001], kg: ['kg', 1], ml: ['L', 0.001], L: ['L', 1], un: ['un', 1] }
+
+export function pricePerBase(price, measureValue, measureUnit) {
+  if (price == null || !measureValue || !BASE_UNITS[measureUnit]) return null
+  const [base, factor] = BASE_UNITS[measureUnit]
+  return { base, value: price / (measureValue * factor) }
+}
+
+export function formatPricePerBase(perBase) {
+  return perBase ? `${formatMoney(perBase.value)}/${perBase.base}` : '—'
+}
+
+// Ids of the cheapest option per base unit, only where there is something to compare
+export function cheapestOptionIds(options) {
+  const best = {}
+  const counts = {}
+  for (const option of options) {
+    const perBase = pricePerBase(option.price, option.measure_value, option.measure_unit)
+    if (!perBase) continue
+    counts[perBase.base] = (counts[perBase.base] ?? 0) + 1
+    if (!best[perBase.base] || perBase.value < best[perBase.base].value) {
+      best[perBase.base] = { id: option.id, value: perBase.value }
+    }
+  }
+  return new Set(Object.keys(best).filter((base) => counts[base] > 1).map((base) => best[base].id))
+}
+
 export function wholesaleHint(item) {
   const { wholesale_price: wholesale, wholesale_min_qty: min } = item
   if (wholesale == null || min == null) return null

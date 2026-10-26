@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { parseNumber, toInput } from '../lib/calc.js'
-import { CATEGORIES, UNITS } from '../lib/catalog.js'
+import { formatMoney, parseNumber, toInput } from '../lib/calc.js'
+import { CATEGORIES, normalizeName, UNITS } from '../lib/catalog.js'
 import { supabase } from '../lib/supabase.js'
-import { dangerButton, Field, inputBase, inputClass, primaryButton, Sheet } from './ui.jsx'
+import { dangerButton, Field, inputBase, inputClass, primaryButton, secondaryButton, Sheet } from './ui.jsx'
 
 const NUMBER_FIELDS = [
   'qty_wanted',
@@ -15,7 +15,8 @@ const NUMBER_FIELDS = [
   'real_measure_value',
 ]
 
-export default function ItemSheet({ item, listId, onClose, onSaved }) {
+// history: Map of normalized name -> last bought item from other lists (see ListView)
+export default function ItemSheet({ item, listId, history, onClose, onSaved, onCompare }) {
   const isNew = !item.id
   const bought = item.status === 'bought'
   const [saving, setSaving] = useState(false)
@@ -36,6 +37,25 @@ export default function ItemSheet({ item, listId, onClose, onSaved }) {
   const numberInput = (key, placeholder) => (
     <input inputMode="decimal" placeholder={placeholder} className={inputClass} {...bind(key)} />
   )
+  const last = history.get(normalizeName(form.name))
+
+  // Picking a name used before fills in the blanks with what was bought last time
+  function changeName(e) {
+    const name = e.target.value
+    const previous = isNew && history.get(normalizeName(name))
+    setForm((f) => {
+      if (!previous) return { ...f, name }
+      return {
+        ...f,
+        name,
+        category: previous.category ?? f.category,
+        measure_value: f.measure_value || toInput(previous.measure_value),
+        measure_unit: f.measure_value ? f.measure_unit : (previous.measure_unit ?? f.measure_unit),
+        price_estimated: f.price_estimated || toInput(previous.price),
+      }
+    })
+  }
+
   const unitSelect = (key) => (
     <select className={`${inputBase} w-20 shrink-0 px-2`} {...bind(key)}>
       {UNITS.map((u) => (
@@ -107,7 +127,24 @@ export default function ItemSheet({ item, listId, onClose, onSaved }) {
     <Sheet title={isNew ? 'Novo item' : 'Editar item'} onClose={onClose}>
       <form onSubmit={save} className="flex flex-col gap-4">
         <Field label="Nome">
-          <input autoFocus={isNew} placeholder="Ex.: Leite integral" className={inputClass} {...bind('name')} />
+          <input
+            autoFocus={isNew}
+            placeholder="Ex.: Leite integral"
+            list="history-names"
+            className={inputClass}
+            value={form.name}
+            onChange={changeName}
+          />
+          <datalist id="history-names">
+            {[...history.values()].map((h) => (
+              <option key={h.name} value={h.name} />
+            ))}
+          </datalist>
+          {last?.price != null && (
+            <span className="text-sm text-lagoon-700">
+              Último preço pago: {formatMoney(last.price)} em {last.date}
+            </span>
+          )}
         </Field>
 
         <Field label="Categoria">
@@ -160,6 +197,11 @@ export default function ItemSheet({ item, listId, onClose, onSaved }) {
         <button disabled={saving} className={primaryButton}>
           {saving ? 'Salvando…' : isNew ? 'Adicionar' : 'Salvar'}
         </button>
+        {!isNew && (
+          <button type="button" onClick={onCompare} className={secondaryButton}>
+            Comparar opções{item.options?.length ? ` (${item.options.length})` : ''}
+          </button>
+        )}
         {!isNew && (
           <button type="button" onClick={remove} className={dangerButton}>
             Apagar item

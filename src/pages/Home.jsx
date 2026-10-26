@@ -93,7 +93,13 @@ export default function Home() {
       </header>
 
       {listId ? (
-        <ListView key={listId} listId={listId} onBack={() => setSearchParams({})} />
+        <ListView
+          key={listId}
+          homeId={home.id}
+          listId={listId}
+          onBack={() => setSearchParams({})}
+          onOpen={(id) => setSearchParams({ lista: id })}
+        />
       ) : (
         <ListsOverview homeId={home.id} onOpen={(id) => setSearchParams({ lista: id })} />
       )}
