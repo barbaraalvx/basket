@@ -52,7 +52,7 @@ Migrações em `supabase/migrations/`.
 - `homes`: código secreto e nome. Criada via `create_home(name)`.
 - `home_members`: quais usuários (anônimos) acessam cada casa. Entrada via `join_home(code)`.
 - `lists`: listas da casa (nome, aberta/finalizada).
-- `items`: planejamento (nome, categoria, medida, quantidade desejada, preço previsto) e compra (status, quantidade comprada, preço unitário, medida real, opção escolhida).
+- `items`: planejamento (nome, categoria, medida, quantidade desejada, preço previsto) e compra (status, quantidade comprada, preço na prateleira, medida real, opção escolhida). Atacado opcional: `wholesale_price` vale quando a quantidade comprada chega a `wholesale_min_qty`; entra só no total real.
 - `options`: opções de um item (marca, medida, preço).
 
 Decisões:
