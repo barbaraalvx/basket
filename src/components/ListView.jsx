@@ -407,7 +407,11 @@ function PriceChange({ item, previous, listDate }) {
   const up = change.to > change.from
   const percent = Math.abs(change.percent).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
   return (
-    <p className={`text-xs font-semibold ${up ? 'text-cherry-600' : 'text-lagoon-700'}`}>
+    <p
+      className={`mt-1.5 inline-block rounded-lg px-2 py-1 text-xs font-bold text-papaya-50 shadow-sm ${
+        up ? 'bg-cherry-500 shadow-cherry-500/30' : 'bg-lagoon-600 shadow-lagoon-600/30'
+      }`}
+    >
       {up ? '↑ Subiu' : '↓ Caiu'} {percent}% desde {sinceLabel(previous.listDate, listDate)} (
       {formatMoney(change.from)}
       {change.suffix} → {formatMoney(change.to)}
