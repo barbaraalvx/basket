@@ -59,6 +59,8 @@ Decisões:
 - Unidades de medida: `g`, `kg`, `ml`, `L`, `un`. Para R$/kg e R$/L, g vira kg e ml vira L no navegador.
 - Categorias: lista fixa no código (Hortifruti, Carnes, Laticínios, Padaria, Mercearia, Bebidas, Limpeza, Higiene, Congelados, Outros), guardada como texto.
 - Último preço pago: buscado pelo nome normalizado (sem acento, minúsculo) na compra mais recente da casa, em outras listas (sem catálogo de produtos). Preço e medida vêm da mesma compra (medida real).
+- Variação de preço: cada item compara o preço atual (pago, ou da prateleira se pendente) com a última compra em listas criadas antes da atual: "↑ Subiu 14,5% desde setembro (R$ 7,85 → R$ 8,99)". Tamanhos diferentes comparam por R$/kg, R$/L ou R$/un.
+- Visualização: por categoria (com filtro) ou tudo junto; a escolha fica salva no celular.
 - Reaproveitar lista: "Usar como base para nova lista" copia os itens, com preço previsto e medida da última compra.
 - Opções: "Levar esta" marca a opção como escolhida e coloca o item no carrinho com o preço e a medida dela. A mais barata é calculada por R$/kg, R$/L ou R$/un, só entre opções comparáveis.
 - `items` e `options` têm duas ligações (opção pertence ao item; item aponta a opção escolhida). Ao buscar opções junto com itens, usar `options!options_item_id_fkey(...)`.

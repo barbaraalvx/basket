@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import ListsOverview from '../components/ListsOverview.jsx'
 import ListView from '../components/ListView.jsx'
 import { Spinner, TextSheet } from '../components/ui.jsx'
-import { clearLastHome, setLastHome } from '../lib/lastHome.js'
+import { clearLastHome, setLastHome } from '../lib/storage.js'
 import { ensureSession, supabase } from '../lib/supabase.js'
 
 export default function Home() {

@@ -7,10 +7,13 @@ import {
   formatNumber,
   listTotals,
   paidPrice,
+  priceChange,
   realSubtotal,
+  sinceLabel,
   wholesaleHint,
 } from '../lib/calc.js'
 import { CATEGORIES, categoryOf, normalizeName } from '../lib/catalog.js'
+import { getPreference, setPreference } from '../lib/storage.js'
 import { supabase } from '../lib/supabase.js'
 import { useRealtime } from '../lib/useRealtime.js'
 import ItemSheet from './ItemSheet.jsx'
@@ -32,6 +35,7 @@ export default function ListView({ homeId, listId, onBack, onOpen }) {
   const [history, setHistory] = useState(new Map())
   const [tab, setTab] = useState('pending')
   const [category, setCategory] = useState(null)
+  const [grouped, setGrouped] = useState(() => getPreference('grouped', 'yes') === 'yes')
   const [editing, setEditing] = useState(null) // item, {} for a new one, or null
   const [comparingId, setComparingId] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -39,7 +43,7 @@ export default function ListView({ homeId, listId, onBack, onOpen }) {
 
   const load = useCallback(async () => {
     const [listRes, itemsRes] = await Promise.all([
-      supabase.from('lists').select('id, name, status').eq('id', listId).maybeSingle(),
+      supabase.from('lists').select('id, name, status, created_at').eq('id', listId).maybeSingle(),
       supabase
         .from('items')
         .select('*, options!options_item_id_fkey(*)')
@@ -51,14 +55,16 @@ export default function ListView({ homeId, listId, onBack, onOpen }) {
     if (!itemsRes.error) setItems(itemsRes.data)
   }, [listId])
 
-  // Last bought version of each product in the home's other lists
+  // Last bought version of each product in the home's lists created before this one
   const loadHistory = useCallback(async () => {
+    const { data: current } = await supabase.from('lists').select('created_at').eq('id', listId).maybeSingle()
+    if (!current) return
     const { data, error } = await supabase
       .from('items')
       .select(HISTORY_FIELDS)
       .eq('lists.home_id', homeId)
+      .lt('lists.created_at', current.created_at)
       .eq('status', 'bought')
-      .neq('list_id', listId)
       .order('created_at', { ascending: false })
       .limit(1000)
     if (error) return
@@ -71,6 +77,7 @@ export default function ListView({ homeId, listId, onBack, onOpen }) {
         category: item.category,
         ...boughtMeasure(item),
         price: paidPrice(item),
+        listDate: item.lists.created_at,
         date: new Date(item.lists.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       })
     }
@@ -178,10 +185,20 @@ export default function ListView({ homeId, listId, onBack, onOpen }) {
   const visible = tab === 'pending' ? pending : bought
   const present = CATEGORIES.filter((c) => visible.some((i) => categoryOf(i) === c))
   const activeCategory = present.includes(category) ? category : null
-  const groups = present
-    .filter((c) => !activeCategory || c === activeCategory)
-    .map((c) => [c, visible.filter((i) => categoryOf(i) === c)])
+  // Grouped: one section per category (optionally filtered). Flat: one untitled section.
+  const groups = grouped
+    ? present
+        .filter((c) => !activeCategory || c === activeCategory)
+        .map((c) => [c, visible.filter((i) => categoryOf(i) === c)])
+    : visible.length
+      ? [[null, visible]]
+      : []
   const comparing = items.find((i) => i.id === comparingId)
+
+  function toggleGrouped() {
+    setGrouped(!grouped)
+    setPreference('grouped', grouped ? 'no' : 'yes')
+  }
 
   return (
     <>
@@ -218,8 +235,16 @@ export default function ListView({ homeId, listId, onBack, onOpen }) {
           </TabButton>
         </div>
 
-        {present.length > 1 && (
-          <div className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
+        {visible.length > 0 && (
+          <div className="mt-3 flex justify-end">
+            <button onClick={toggleGrouped} className="text-sm font-semibold text-lagoon-700">
+              {grouped ? '☰ Ver tudo junto' : '▦ Separar por categoria'}
+            </button>
+          </div>
+        )}
+
+        {grouped && present.length > 1 && (
+          <div className="-mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
             <CategoryChip active={!activeCategory} onClick={() => setCategory(null)}>
               Todas
             </CategoryChip>
@@ -241,13 +266,17 @@ export default function ListView({ homeId, listId, onBack, onOpen }) {
           </p>
         ) : (
           groups.map(([group, groupItems]) => (
-            <section key={group} className="mt-6">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sapphire-500">{group}</h3>
+            <section key={group ?? 'all'} className={group ? 'mt-6' : 'mt-4'}>
+              {group && (
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sapphire-500">{group}</h3>
+              )}
               <ul className="space-y-2">
                 {groupItems.map((item) => (
                   <ItemRow
                     key={item.id}
                     item={item}
+                    previous={history.get(normalizeName(item.name))}
+                    listDate={list.created_at}
                     onToggle={() => toggle(item)}
                     onEdit={() => setEditing(item)}
                     onCompare={() => setComparingId(item.id)}
@@ -362,7 +391,32 @@ function CategoryChip({ active, onClick, children }) {
   )
 }
 
-function ItemRow({ item, onToggle, onEdit, onCompare }) {
+function PriceChange({ item, previous, listDate }) {
+  const bought = item.status === 'bought'
+  // In the cart: what was paid. Pending: the shelf price, if someone wrote it down.
+  const current = bought
+    ? {
+        price: paidPrice(item),
+        measure_value: item.real_measure_value ?? item.measure_value,
+        measure_unit: item.real_measure_unit ?? item.measure_unit,
+      }
+    : { price: item.unit_price, measure_value: item.measure_value, measure_unit: item.measure_unit }
+  const change = priceChange(current, previous)
+  if (!change) return null
+
+  const up = change.to > change.from
+  const percent = Math.abs(change.percent).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+  return (
+    <p className={`text-xs font-semibold ${up ? 'text-cherry-600' : 'text-lagoon-700'}`}>
+      {up ? '↑ Subiu' : '↓ Caiu'} {percent}% desde {sinceLabel(previous.listDate, listDate)} (
+      {formatMoney(change.from)}
+      {change.suffix} → {formatMoney(change.to)}
+      {change.suffix})
+    </p>
+  )
+}
+
+function ItemRow({ item, previous, listDate, onToggle, onEdit, onCompare }) {
   const bought = item.status === 'bought'
   const qty = bought ? boughtQty(item) : item.qty_wanted
   const measure = bought
@@ -396,6 +450,7 @@ function ItemRow({ item, onToggle, onEdit, onCompare }) {
             <p className="truncate font-semibold">{item.name}</p>
             <p className="text-sm text-sapphire-600">{details.join(' · ')}</p>
             {hint && <p className="text-xs font-semibold text-jonquil-800">{hint}</p>}
+            <PriceChange item={item} previous={previous} listDate={listDate} />
           </div>
           <span className="shrink-0 font-semibold tabular-nums">{formatMoney(subtotal)}</span>
         </button>

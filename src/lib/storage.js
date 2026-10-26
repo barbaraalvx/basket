@@ -1,3 +1,21 @@
+// Per-phone preferences kept in localStorage
+
+export function getPreference(key, fallback) {
+  try {
+    return localStorage.getItem(`basket:${key}`) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+export function setPreference(key, value) {
+  try {
+    localStorage.setItem(`basket:${key}`, value)
+  } catch {
+    // Storage unavailable (private mode); the default is used next time.
+  }
+}
+
 // Remembers the last home opened on this phone, so "/" can jump straight to it.
 const KEY = 'basket:lastHome'
 

@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
-import { getLastHome } from '../lib/lastHome.js'
+import { getLastHome } from '../lib/storage.js'
 import { ensureSession, supabase } from '../lib/supabase.js'
 
 export default function Start() {

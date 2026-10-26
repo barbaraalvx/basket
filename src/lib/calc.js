@@ -74,6 +74,38 @@ export function cheapestOptionIds(options) {
   return new Set(Object.keys(best).filter((base) => counts[base] > 1).map((base) => best[base].id))
 }
 
+// Compares a price with the previous purchase. Same size compares pack prices;
+// different sizes compare per kg/L/un. Returns null when there's nothing to say.
+export function priceChange(current, previous) {
+  if (current.price == null || previous?.price == null) return null
+  const before = pricePerBase(previous.price, previous.measure_value, previous.measure_unit)
+  const now = pricePerBase(current.price, current.measure_value, current.measure_unit)
+  const sameSize = previous.measure_value === current.measure_value && previous.measure_unit === current.measure_unit
+
+  let from = previous.price
+  let to = current.price
+  let suffix = ''
+  if (before && now && !sameSize) {
+    if (before.base !== now.base) return null
+    from = before.value
+    to = now.value
+    suffix = `/${now.base}`
+  }
+  if (Math.abs(to - from) < 0.005 || from === 0) return null
+  return { from, to, suffix, percent: ((to - from) / from) * 100 }
+}
+
+// "setembro" when the months differ, "12/10" within the same month
+export function sinceLabel(previousDate, currentDate) {
+  const before = new Date(previousDate)
+  const now = new Date(currentDate)
+  if (before.getMonth() === now.getMonth() && before.getFullYear() === now.getFullYear()) {
+    return before.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  }
+  const options = before.getFullYear() === now.getFullYear() ? { month: 'long' } : { month: 'long', year: 'numeric' }
+  return before.toLocaleDateString('pt-BR', options)
+}
+
 export function wholesaleHint(item) {
   const { wholesale_price: wholesale, wholesale_min_qty: min } = item
   if (wholesale == null || min == null) return null
