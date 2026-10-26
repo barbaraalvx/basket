@@ -1,1 +1,66 @@
 @import "tailwindcss";
+
+/* Palette: https://coolors.co/086788-07a0c3-f0c808-fff1d0-dd1c1a */
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  /* Primary */
+  --color-sapphire-50: #e6f4f8;
+  --color-sapphire-100: #c2e3ec;
+  --color-sapphire-200: #8cc8d9;
+  --color-sapphire-300: #4fa6bf;
+  --color-sapphire-400: #1e86a3;
+  --color-sapphire-500: #086788;
+  --color-sapphire-600: #075a77;
+  --color-sapphire-700: #064a62;
+  --color-sapphire-800: #053a4d;
+  --color-sapphire-900: #042a38;
+  --color-sapphire-950: #021a24;
+
+  /* Accent: links, focus, realtime */
+  --color-lagoon-50: #e6f7fb;
+  --color-lagoon-100: #c0ecf5;
+  --color-lagoon-200: #86d9eb;
+  --color-lagoon-300: #45c2dd;
+  --color-lagoon-400: #1aaed0;
+  --color-lagoon-500: #07a0c3;
+  --color-lagoon-600: #0687a5;
+  --color-lagoon-700: #056c84;
+  --color-lagoon-800: #045264;
+  --color-lagoon-900: #033a47;
+
+  /* Highlight: totals, cheapest option */
+  --color-jonquil-50: #fefae6;
+  --color-jonquil-100: #fdf1bf;
+  --color-jonquil-200: #fae585;
+  --color-jonquil-300: #f6d84a;
+  --color-jonquil-400: #f3cf22;
+  --color-jonquil-500: #f0c808;
+  --color-jonquil-600: #cca906;
+  --color-jonquil-700: #a08505;
+  --color-jonquil-800: #746004;
+  --color-jonquil-900: #4a3d02;
+
+  /* Background */
+  --color-papaya-50: #fffcf5;
+  --color-papaya-100: #fff8e8;
+  --color-papaya-200: #fff1d0;
+  --color-papaya-300: #ffe4a8;
+  --color-papaya-400: #ffd47a;
+
+  /* Alerts and destructive actions */
+  --color-cherry-50: #fdecec;
+  --color-cherry-100: #f9cfce;
+  --color-cherry-200: #f19e9d;
+  --color-cherry-300: #e86664;
+  --color-cherry-400: #e23b39;
+  --color-cherry-500: #dd1c1a;
+  --color-cherry-600: #bb1816;
+  --color-cherry-700: #941311;
+  --color-cherry-800: #6d0e0d;
+  --color-cherry-900: #460908;
+}
+
+body {
+  @apply bg-papaya-100 font-sans text-sapphire-950 antialiased;
+}

@@ -62,6 +62,17 @@ Decisões:
 - Reaproveitar lista: copia os itens de uma lista antiga para uma nova.
 - `items` e `options` têm duas ligações (opção pertence ao item; item aponta a opção escolhida). Ao buscar opções junto com itens, usar `options!options_item_id_fkey(...)`.
 
+## Identidade visual
+
+Paleta base (coolors.co/086788-07a0c3-f0c808-fff1d0-dd1c1a), com escalas de tons definidas em `src/index.css` (`@theme` do Tailwind). Estilo moderno/futurista.
+
+- `sapphire` (#086788): cor principal (títulos, botões principais, cabeçalho).
+- `lagoon` (#07A0C3): acento interativo (links, foco, tempo real); degradê com `sapphire`.
+- `jonquil` (#F0C808): destaques (total, opção mais barata).
+- `papaya` (#FFF1D0): fundo e superfícies.
+- `cherry` (#DD1C1A): alertas e ações destrutivas (real acima do previsto, apagar).
+- Fonte: Space Grotesk. Cantos bem arredondados, degradês e brilhos sutis.
+
 ## Stack
 
 - Frontend: React + Vite.
