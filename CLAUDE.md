@@ -40,10 +40,27 @@ Descrição curta do repo: "Lista de compras com cálculo automático do total d
 
 ## Acesso e compartilhamento
 
-- Sem conta e sem login. A lista é compartilhada por link.
-- Ao criar uma lista, o app gera um código longo e aleatório na URL (ex.: `/l/x7Kp9...`). Quem tem o link edita a lista; o código funciona como senha.
-- O código precisa ser difícil de adivinhar, e o banco deve limitar o acesso aos dados de cada lista a quem tem o código (ex.: regras de segurança por linha no Supabase).
+- Sem conta e sem login visível. O acesso é compartilhado por link.
+- O link é por casa, não por lista: ao criar uma casa, o app gera um código longo e aleatório na URL (ex.: `/c/x7Kp9...`). Todas as listas (atuais e antigas) ficam dentro dela. Quem tem o link edita tudo; o código funciona como senha.
+- Por baixo, cada celular usa login anônimo do Supabase (automático, sem tela). Ao abrir o link, o app chama `join_home(code)` e o celular vira membro da casa. As regras de segurança por linha (RLS) liberam os dados só para membros, e o Realtime respeita essas regras.
 - Decisão provisória: depois dos testes de uso, a autora avisa se será preciso mudar (por exemplo, para login).
+
+## Modelo de dados
+
+Migrações em `supabase/migrations/`.
+
+- `homes`: código secreto e nome. Criada via `create_home(name)`.
+- `home_members`: quais usuários (anônimos) acessam cada casa. Entrada via `join_home(code)`.
+- `lists`: listas da casa (nome, aberta/finalizada).
+- `items`: planejamento (nome, categoria, medida, quantidade desejada, preço previsto) e compra (status, quantidade comprada, preço unitário, medida real, opção escolhida).
+- `options`: opções de um item (marca, medida, preço).
+
+Decisões:
+- Unidades de medida: `g`, `kg`, `ml`, `L`, `un`. Para R$/kg e R$/L, g vira kg e ml vira L no navegador.
+- Categorias: lista fixa no código (Hortifruti, Carnes, Laticínios, Padaria, Mercearia, Bebidas, Limpeza, Higiene, Congelados, Outros), guardada como texto.
+- Último preço pago: buscado pelo nome do item na compra mais recente da casa (sem catálogo de produtos).
+- Reaproveitar lista: copia os itens de uma lista antiga para uma nova.
+- `items` e `options` têm duas ligações (opção pertence ao item; item aponta a opção escolhida). Ao buscar opções junto com itens, usar `options!options_item_id_fkey(...)`.
 
 ## Stack
 
